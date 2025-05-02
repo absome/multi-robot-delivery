@@ -6,7 +6,7 @@ class Robot:
     """
     def __init__(self, initial_state, robot_id, color, dynamics_func, params:list=None):
         self.id = robot_id
-        self.state = initial_state # notimplemented
+        self.state = initial_state.copy()
         self.goal_state = NotImplemented
         self.controller = NotImplemented
         self.color = color
@@ -17,12 +17,10 @@ class Robot:
         self.caster_point = NotImplemented
 
         # Stored states
-        self.state_history = NotImplemented
+        self.state_history = np.array([self.state])
         self.input_history = NotImplemented
         
-        self.dynamics_func = dynamics_func
-        self.history = [self.state.copy()]
-        
+        self.dynamics_func = dynamics_func        
         if params:
             scale = 2
             self.radius, self.wheel_length, self.wheel_width = params
