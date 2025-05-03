@@ -1,4 +1,5 @@
 import numpy as np
+from .detect_obstacle import DetectObstacle
 
 class Robot:
     """
@@ -13,7 +14,7 @@ class Robot:
     
         # Current internal state
         self.current_input = NotImplemented
-        self.sensor_readings = NotImplemented
+        self.sensor = DetectObstacle(self.sensing_range, self.sensor_resolution)
         self.caster_point = NotImplemented
 
         # Stored states
@@ -23,15 +24,18 @@ class Robot:
         self.dynamics_func = dynamics_func        
         if params:
             scale = 2
-            self.radius, self.wheel_length, self.wheel_width = params
+            self.radius, self.wheel_length, self.wheel_width, self.sensing_range, self.sensor_resolution = params
             self.radius *= scale
             self.wheel_length *= scale
             self.wheel_width *= scale
+            
         else:
             scale = 2
             self.radius = 0.08 * scale
             self.wheel_length = 0.1*scale
-            self.wheel_width = 0.02*scale        
+            self.wheel_width = 0.02*scale  
+            self.sensing_range = 1
+            self.sensor_resolution = np.pi/8      
         
         print(f"Intialized robot with ID: {self.id}")
         
@@ -44,8 +48,35 @@ class Robot:
     
     def get_caster_point(self):
         raise NotImplementedError
+    
+    def compute_sensor_endpoint(self):
+        # Get distance reading
+        px, py, theta = self.state[:]
+        distance_reading = self.sensor.get_sensing_data(px, py, theta)
+        # assuming sensor position is in the robot's center
+        sens_N = round(2*np.pi/self.sensor_resolution)
+        sensors_theta = [i*2*np.pi/sens_N for i in range(sens_N)]
+        obst_points = np.zeros((3,sens_N))
 
-    def step(self, dt):
+        R_WB = np.array([ [np.cos(self.state[2]), -np.sin(self.state[2]), self.state[0] ], \
+            [np.sin(self.state[2]),  np.cos(self.state[2]), self.state[1] ], [0, 0, 1] ])
+        for i in range(sens_N):
+            R_BS = np.array([ [np.cos(sensors_theta[i]), -np.sin(sensors_theta[i]), 0 ], \
+                [np.sin(sensors_theta[i]),  np.cos(sensors_theta[i]), 0 ], [0, 0, 1] ])
+            temp = R_WB @ R_BS @ np.array([distance_reading[i], 0, 1])
+            obst_points[:,i] = temp
+
+        return obst_points[:2,:]
+    
+    
+    def register_obstacles(self, obstacles):
+        """
+        Stores the obstacles in the environment that the robot should sense
+        """
+        for obstacle in obstacles:
+            self.sensor.register_obstacle_bounded(obstacle)
+
+    def compute_control_input(self, dt):
         """
         Advance the robot's state by dt using the dynamics function.
         """
