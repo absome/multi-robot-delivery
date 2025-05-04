@@ -6,12 +6,16 @@ from matplotlib.animation import FuncAnimation
 
 class SimViz:
     def __init__(self, robots, static_obstacles, field):
+        # Sim params
+        self.Ts = 0.01 # time step, update simulation every 10ms
+        self.interval = 20 #50fps
+        self.n_frames = 2000
+        
         self.robots = robots
         self.static_obstacles = static_obstacles
         self.field = field # ((-xlim, xlim), (-ylim, ylim))
         # Figure params
-        self.fig = plt.figure(1)
-        self.ax = plt.gca()
+        self.fig, self.ax = plt.subplots()
         self.ax.set(xlabel="x [m]", ylabel="y [m]", aspect="equal")
         self.ax.set(xlim=field[0], ylim=field[1])
         self.time_text = self.ax.text(0.78, 0.01, 't = 0 s', color = 'k', fontsize='large', 
@@ -64,7 +68,7 @@ class SimViz:
     
     def init_draw(self):
         # Add time text to plot
-        self.time_txt.set_text('t = 0.0 s')        
+        self.time_text.set_text('t = 0.0 s')        
         artists = [self.time_text]
         for robot in self.robots:
             robot_visuals = self.robot_visuals[robot.id]
@@ -75,14 +79,14 @@ class SimViz:
                         robot_visuals['arrow'], *robot_visuals['wheels']]
         return artists
     
-    def update_robot_artists(self):
+    def update_robot_artists(self, time_step):
         """
         Update positions of the robot's artists according to the state and returns them
         """
         robot_artists = []
         for robot in self.robots:
             # Update trajectory line
-            robot.step()
+            robot.step(time_step)
             state_history = robot.state_history
             visuals = self.robot_visuals[robot.id]
             visuals['line'].set_data(state_history[:,0], state_history[:,1])
@@ -117,13 +121,15 @@ class SimViz:
         return robot_artists
         
         
-    def update_animation(self):
+    def update_animation(self, frame):
         """
         Updates figures animation with all moved artists
         """
-        artists = []
-        updated_robot_artists = self.update_robot_artists()
-        artists += updated_robot_artists
+        t = frame*self.Ts
+        self.time_text.set_text(f't = {t:.1f} s')
+        artists = [self.time_text]
+        updated = self.update_robot_artists(self.Ts)
+        artists.extend(updated)
         
         return artists
     

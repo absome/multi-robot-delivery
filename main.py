@@ -4,14 +4,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 goal_state = np.array([2., 0., 0.])
-
-def differential_drive(state, dt):
-    # simple forward motion at 0.1 m/s
-    x, y, theta = state
-    v = 0.1
-    return np.array([x + v * np.cos(theta) * dt,
-                        y + v * np.sin(theta) * dt,
-                        theta])
     
 
 obst1 = np.array( [ [-1., -1.5], [-0.5, -1.5],\
@@ -26,10 +18,10 @@ robot2_state = np.array([-3.75, -0.25, 0.])
 robot3_state = np.array([-3.25, 0.5, 0.])
 robot4_state = np.array([-3.25, -0.25, 0.])
 
-robot1 = Robot(robot_id=1, initial_state=robot1_state, color='r', dynamics_func=differential_drive)
-robot2 = Robot(robot_id=2, initial_state=robot2_state, color='b', dynamics_func=differential_drive)
-robot3 = Robot(robot_id=3, initial_state=robot3_state, color='g', dynamics_func=differential_drive)
-robot4 = Robot(robot_id=4, initial_state=robot4_state, color='y', dynamics_func=differential_drive)
+robot1 = Robot(robot_id=1, initial_state=robot1_state, goal_state=goal_state, color='r')
+robot2 = Robot(robot_id=2, initial_state=robot2_state, goal_state=goal_state, color='b')
+robot3 = Robot(robot_id=3, initial_state=robot3_state, goal_state=goal_state, color='g')
+robot4 = Robot(robot_id=4, initial_state=robot4_state, goal_state=goal_state, color='y')
 
 robots = [robot1, robot2, robot3, robot4]
 
@@ -37,7 +29,5 @@ field = ((-4.0, 4.0), (-3.0, 3.0)) # (-x, x), (-y, y)
 
 
 sim = SimViz(robots=robots, static_obstacles=obstacles, field=field)
-# sim.draw_static_obstacles(obstacles=obstacles)
-# sim.init_icons()
 sim.init_static_obstacles(obstacles)
-plt.show()
+sim.run()

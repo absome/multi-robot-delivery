@@ -5,23 +5,23 @@ class Robot:
     """
     Represents a single moving robot in the simulator
     """
-    def __init__(self, initial_state, robot_id, color, dynamics_func, params:list=None):
+    def __init__(self, initial_state, goal_state, robot_id, color, params:list=None):
         self.id = robot_id
         self.state = initial_state.copy()
-        self.goal_state = NotImplemented
+        self.goal_state = goal_state
         self.controller = NotImplemented
         self.color = color
     
         # Current internal state
         self.current_input = NotImplemented
-        self.sensor = DetectObstacle(self.sensing_range, self.sensor_resolution)
-        self.caster_point = NotImplemented
+        sensing_range, sensor_resolution = 1, np.pi/8
+        self.sensor = DetectObstacle(sensing_range, sensor_resolution)
+        self.caster_distance = 0.1 # distance of caster point along robot X axis
 
         # Stored states
         self.state_history = np.array([self.state])
         self.input_history = NotImplemented
         
-        self.dynamics_func = dynamics_func        
         if params:
             scale = 2
             self.radius, self.wheel_length, self.wheel_width, self.sensing_range, self.sensor_resolution = params
@@ -38,15 +38,45 @@ class Robot:
             self.sensor_resolution = np.pi/8      
         
         print(f"Intialized robot with ID: {self.id}")
+
+    def compute_ugtg(self):
+        """
+        Computes go-to-goal control input that moves the
+        robot towards the goal direction
+        """
+        # initial numpy array for [v, omega]
+        current_input = np.array([0., 0.]) 
+        # Constants
+        v_0 = 0.5
+        beta = 1.0
         
-    
-    def compute_control_input(self):
-        raise NotImplementedError
+        # Unpack goal states
+        desired_state = self.goal_state
+        px_d, py_d, theta_d = desired_state[:]
+        
+        # Unpack robot states
+        px, py, theta = self.state[:]
+        
+        py_diff = py_d - py
+        px_diff = px_d - px
+        theta_d = np.arctan2(py_diff, px_diff)
+
+        # Compute gain
+        error = desired_state - self.state
+        error_norm = np.linalg.norm(error)
+        k_g = v_0 * (1 - np.exp(-beta * error_norm)) / error_norm
+        k_theta = 2*k_g
+        
+        # Compute angular velocity
+        error_th = theta_d - theta
+        error_th = np.arctan2(np.sin(error_th), np.cos(error_th))
+        w = k_theta*(error_th)
+        # Calculate forward velocity of robot
+        v = k_g*np.sqrt(px_diff**2 + py_diff**2)
+        current_input = np.array([v, w])
+        return current_input
     
     def get_sensing_data(self):
-        raise NotImplementedError
-    
-    def get_caster_point(self):
         raise NotImplementedError
     
     def compute_sensor_endpoint(self):
@@ -87,10 +117,41 @@ class Robot:
         for obstacle in obstacles:
             self.sensor.register_obstacle_bounded(obstacle)
 
-    def compute_control_input(self, dt):
-        """
-        Advance the robot's state by dt using the dynamics function.
-        """
-        self.state = self.dynamics_func(self.state, dt)
-        self.history.append(self.state.copy())
+    # def compute_control_input(self, dt):
+    #     """
+    #     Advance the robot's state by dt using the dynamics function.
+    #     """
+    #     self.state = self.dynamics_func(self.state, dt)
+    #     self.history.append(self.state.copy())
 
+    def caster_xy(self):
+        """
+        Used to get position coordinations of caster point ahead
+        of the robot body
+        """
+        px, py, theta = self.state[:]
+        l = self.caster_distance
+        sx = px + l*np.cos(theta)
+        sy = py + l*np.sin(theta)
+        return sx, sy
+
+    def step(self, time_step):
+        """
+        Update new state of robot at time step t+1
+        """
+        current_input = self.compute_ugtg()
+        v, w = current_input
+        # Correctly compute delta based on current orientation
+        dx = v * np.cos(self.state[2]) * time_step
+        dy = v * np.sin(self.state[2]) * time_step
+        dtheta = w * time_step
+        
+        new_state = self.state.copy()
+        new_state[0] += dx
+        new_state[1] += dy
+        new_state[2] += dtheta
+        new_state[2] = ( (new_state[2] + np.pi) % (2*np.pi) ) - np.pi  # Wrap angle
+        
+        self.state = new_state
+        self.state_history = np.vstack([self.state_history, self.state])
+        
