@@ -1,0 +1,17 @@
+## Setting up sensor updating points
+# Initiate object detection
+range_sensor = DetectObstacle( sensing_range, sensor_resolution)
+range_sensor.register_obstacle_bounded( obst_vertices )
+
+
+# At time step 0
+# compute and plot sensor reading endpoint
+distance_reading = range_sensor.get_sensing_data( robot_state[0], robot_state[1], robot_state[2])
+obst_points = compute_sensor_endpoint(robot_state, distance_reading)
+pl_sens, = sim_visualizer.ax.plot(obst_points[0], obst_points[1], '.') #, marker='X')
+pl_txt = [sim_visualizer.ax.text(obst_points[0,i], obst_points[1,i], str(i)) for i in range(len(distance_reading))]
+
+
+# For each time step, update sensor visualization
+pl_sens.set_data(obst_points[0], obst_points[1])
+for i in range(len(distance_reading)): pl_txt[i].set_position((obst_points[0,i], obst_points[1,i]))
