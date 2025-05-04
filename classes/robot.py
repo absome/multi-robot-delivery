@@ -50,6 +50,17 @@ class Robot:
         raise NotImplementedError
     
     def compute_sensor_endpoint(self):
+        """
+        Template explanation
+        
+        Args:
+        Returns:
+            obst_points[:2,:]
+                Template explanation
+            distance_reading::[np.array]
+                NumpyArray of length M, containing the distance to nearest
+                obstacle for each ray (or max range for no hits)
+        """
         # Get distance reading
         px, py, theta = self.state[:]
         distance_reading = self.sensor.get_sensing_data(px, py, theta)
@@ -66,7 +77,7 @@ class Robot:
             temp = R_WB @ R_BS @ np.array([distance_reading[i], 0, 1])
             obst_points[:,i] = temp
 
-        return obst_points[:2,:]
+        return obst_points[:2,:], distance_reading
     
     
     def register_obstacles(self, obstacles):

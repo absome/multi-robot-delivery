@@ -3,7 +3,7 @@ from classes.visualize_sim import SimViz
 import matplotlib.pyplot as plt
 import numpy as np
 
-
+goal_state = np.array([2., 0., 0.])
 
 def differential_drive(state, dt):
     # simple forward motion at 0.1 m/s
