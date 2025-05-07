@@ -1,5 +1,7 @@
 import numpy as np
 from .detect_obstacle import DetectObstacle
+from cvxopt import matrix, solvers
+import cvxopt.solvers
 
 class Robot:
     """
@@ -11,16 +13,19 @@ class Robot:
         self.goal_state = goal_state
         self.controller = NotImplemented
         self.color = color
-    
+        
         # Current internal state
-        self.current_input = NotImplemented
+        self.current_input = np.array([0., 0., 0.])
         sensing_range, sensor_resolution = 1, np.pi/8
         self.sensor = DetectObstacle(sensing_range, sensor_resolution)
-        self.caster_distance = 0.1 # distance of caster point along robot X axis
+        self.caster_distance = 0.5 # distance of caster point along robot X axis
 
         # Stored states
         self.state_history = np.array([self.state])
         self.input_history = NotImplemented
+        
+        # Other robots (used for QP control)
+        self.other_robots = []
         
         if params:
             scale = 2
@@ -39,7 +44,7 @@ class Robot:
         
         print(f"Intialized robot with ID: {self.id}")
 
-    def compute_ugtg(self):
+    def compute_ugtg(self, caster=False):
         """
         Computes go-to-goal control input that moves the
         robot towards the goal direction
@@ -74,7 +79,29 @@ class Robot:
         # Calculate forward velocity of robot
         v = k_g*np.sqrt(px_diff**2 + py_diff**2)
         current_input = np.array([v, w])
+        
+        if caster:
+            sx, sy = self.caster_xy()
+            gx, gy = self.goal_state[:2]
+            # caster linear velocity
+            ux, uy = k_g*(gx - sx), k_g*(gy - sy)
+            v = np.cos(theta)*ux + np.sin(theta)*uy
+            w = (-np.sin(theta)/self.caster_distance)*ux + (np.cos(theta)/self.caster_distance)*uy
+            current_input[0] = v
+            current_input[1] = w
+
         return current_input
+    
+    def register_other_robots(self, other_robots):
+        """
+        Takes in all intialized robots and saves only those that are not
+        the current robot into a list
+        """
+        self.other_robots = [r for r in other_robots if r.id != self.id]
+        
+    def compute_qp(self):
+        raise NotImplementedError
+
     
     def get_sensing_data(self):
         raise NotImplementedError
@@ -133,13 +160,15 @@ class Robot:
         l = self.caster_distance
         sx = px + l*np.cos(theta)
         sy = py + l*np.sin(theta)
-        return sx, sy
+        caster_xy = np.array([sx, sy])
+        return caster_xy
 
     def step(self, time_step):
         """
         Update new state of robot at time step t+1
         """
-        current_input = self.compute_ugtg()
+        current_input = self.compute_qp()
+        self.current_input = current_input # store current_input
         v, w = current_input
         # Correctly compute delta based on current orientation
         dx = v * np.cos(self.state[2]) * time_step
@@ -154,4 +183,5 @@ class Robot:
         
         self.state = new_state
         self.state_history = np.vstack([self.state_history, self.state])
+    
         
