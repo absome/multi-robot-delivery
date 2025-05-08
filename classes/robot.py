@@ -13,12 +13,14 @@ class Robot:
         self.goal_state = goal_state
         self.controller = NotImplemented
         self.color = color
+        self.total_bots = None
+        self.pairs = None
         
         # Current internal state
         self.current_input = np.array([0., 0., 0.])
         sensing_range, sensor_resolution = 1, np.pi/8
         self.sensor = DetectObstacle(sensing_range, sensor_resolution)
-        self.caster_distance = 0.5 # distance of caster point along robot X axis
+        self.caster_distance = 0.1 # distance of caster point along robot X axis
 
         # Stored states
         self.state_history = np.array([self.state])
@@ -100,7 +102,94 @@ class Robot:
         self.other_robots = [r for r in other_robots if r.id != self.id]
         
     def compute_qp(self):
-        raise NotImplementedError
+        """
+        Centralised CBF-QP for 4 planar robots with one circular obstacle.
+        Each robot must keep rigid formation and avoid the obstacle.
+        """
+        robots = self.total_bots
+        pairs = self.pairs
+        N = len(robots)                # should be 4
+        assert N == 4, "code below assumes 4 robots"
+
+        # ---------- nominal controls ----------
+        u_gtg = np.vstack([r.compute_ugtg(caster=True)[:2] for r in robots])   # (4,2)
+        u_gtg_flat = u_gtg.reshape(-1)                                         # (8,)
+
+        Q  = 2*np.eye(2*N)                     # 8×8
+        c  = -2*u_gtg_flat                     # 8×1
+
+        # ---------- barrier parameters ----------
+        obs_pos   = np.array([0.5, 2])
+        R_s       = 0.5
+        gamma_f   = 0.5
+        gamma_o   = 0.2
+        eps       = 0.01
+        d_ref     = 1.5
+
+        # ---------- how many constraints ----------
+        n_edge_constraints = len(pairs)*2
+        n_obst_constraints = N
+        n_constr = n_edge_constraints + n_obst_constraints
+
+        H = np.zeros((n_constr, 2*N))
+        b = np.zeros((n_constr, 1))
+        row = 0
+
+        # ---------- formation constraints ----------
+        for (i_id, j_id) in pairs:
+            # make indices 0-based
+            i, j = i_id-1, j_id-1
+
+            s_i = robots[i].caster_xy()
+            s_j = robots[j].caster_xy()
+            diff = s_i - s_j
+            dij2 = diff @ diff
+
+            # upper-distance barrier
+            h1 = -(dij2) + (d_ref + eps)**2
+            H[row, 2*i:2*i+2] =  2*diff
+            H[row, 2*j:2*j+2] = -2*diff
+            b[row, 0]         =  gamma_f * h1
+            row += 1
+
+            # lower-distance barrier
+            h2 =  dij2 - (d_ref - eps)**2
+            H[row, 2*i:2*i+2] = -2*diff
+            H[row, 2*j:2*j+2] =  2*diff
+            b[row, 0]         =  gamma_f * h2
+            row += 1
+
+        # ---------- obstacle constraints ----------
+        for k in range(N):
+            s_k = robots[k].caster_xy()
+            diff_o = s_k - obs_pos
+            h_obs  = diff_o @ diff_o - R_s**2
+            H[row, 2*k:2*k+2] = -2*diff_o
+            b[row, 0]         =  gamma_o * h_obs
+            row += 1
+
+        # ---------- solve ----------
+        Q_mat = cvxopt.matrix(Q, tc='d')
+        c_mat = cvxopt.matrix(c, (2*N,1), tc='d')
+        H_mat = cvxopt.matrix(H, tc='d')
+        b_mat = cvxopt.matrix(b, tc='d')
+
+        cvxopt.solvers.options['show_progress'] = False
+        sol = cvxopt.solvers.qp(Q_mat, c_mat, H_mat, b_mat)
+
+        caster_inputs = np.array(sol['x']).reshape(N,2)     # one row per robot
+        r_index = self.id - 1
+        caster_input = caster_inputs[r_index]
+        
+        ux, uy = caster_input[:]
+        theta = self.state[2]
+        l = self.caster_distance
+        v = np.cos(theta)*ux + np.sin(theta)*uy
+        w = (-np.sin(theta)/l)*ux + (np.cos(theta)/l)*uy
+        current_input = np.array([v, w])
+        
+        return current_input*5
+
 
     
     def get_sensing_data(self):
@@ -184,4 +273,7 @@ class Robot:
         self.state = new_state
         self.state_history = np.vstack([self.state_history, self.state])
     
+    def add_neighbours(self, robots:list, pairs:list):
+        self.total_bots = robots
+        self.pairs = pairs
         

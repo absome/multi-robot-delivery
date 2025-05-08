@@ -85,3 +85,67 @@
         current_input = np.array([v, w])
         
         return current_input*5
+    
+    
+        def compute_qp(self):
+        neighbours = self.neighbouring_robots          # exclude self!
+        obs_pos = np.array([0., 0.5])
+        Rs = 1.0
+
+        d_ref = 2.0
+        eps   = 1.0          # << tighter tolerance
+        g_form = 0.5
+        g_avo  = 0.2
+
+        # 1. cost -------------------------------------------------------------
+        u_gtg  = self.compute_ugtg(caster=True)[:2]
+        Q_mat  = cvxopt.matrix(2*np.eye(2), tc='d')
+        c_mat  = cvxopt.matrix(-2*u_gtg.reshape(2,1), tc='d')
+
+        # 2. barriers ---------------------------------------------------------
+        n_rows = len(neighbours)*2 + 1
+        H = np.zeros((n_rows, 2))
+        b = np.zeros((n_rows, 1))
+        row = 0
+
+        s_i = self.caster_xy()          # (2,)
+
+        # -- formation rows
+        for r in neighbours:
+            s_j = r.caster_xy()
+            diff = s_i - s_j
+            dij2 = diff @ diff
+
+            # upper distance
+            h1 = -(dij2) + (d_ref+eps)**2
+            H[row,:] = -2*diff
+            b[row,0] = (g_form/2)*h1
+            row += 1
+
+            # lower distance
+            h2 =  dij2  - (d_ref-eps)**2
+            H[row,:] =  2*diff
+            b[row,0] = (g_form/2)*h2
+            row += 1
+
+        # -- obstacle row
+        diff_o = s_i - obs_pos
+        h_obs  = diff_o @ diff_o - Rs**2
+        H[row,:] = -2*diff_o
+        b[row,0] = g_avo * h_obs
+
+        assert row == n_rows-1, "row counter mismatch!"
+
+        # 3. solve ------------------------------------------------------------
+        sol = cvxopt.solvers.qp(Q_mat, c_mat,
+                                cvxopt.matrix(H, tc='d'),
+                                cvxopt.matrix(b, tc='d'))
+        ux, uy = np.array(sol['x']).flatten()
+
+        # 4. map to (v, ω) ----------------------------------------------------
+        theta = self.state[2]
+        L     = self.caster_distance
+        v     =  np.cos(theta)*ux + np.sin(theta)*uy
+        w     = (-np.sin(theta)/L)*ux + (np.cos(theta)/L)*uy
+
+        return np.array([v, w])
