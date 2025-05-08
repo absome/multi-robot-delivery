@@ -15,6 +15,7 @@ class Robot:
         self.color = color
         self.total_bots = None
         self.pairs = None
+        self.obstacles = None
         
         # Current internal state
         self.current_input = np.array([0., 0., 0.])
@@ -111,24 +112,23 @@ class Robot:
         N = len(robots)                # should be 4
         assert N == 4, "code below assumes 4 robots"
 
-        # ---------- nominal controls ----------
+        # ---------- ugtg ----------
         u_gtg = np.vstack([r.compute_ugtg(caster=True)[:2] for r in robots])   # (4,2)
         u_gtg_flat = u_gtg.reshape(-1)                                         # (8,)
 
-        Q  = 2*np.eye(2*N)                     # 8×8
-        c  = -2*u_gtg_flat                     # 8×1
+        Q  = 2*np.eye(2*N)
+        c  = -2*u_gtg_flat                     
 
-        # ---------- barrier parameters ----------
-        obs_pos   = np.array([0.5, 2])
-        R_s       = 0.5
+        # ---------- Control Barrier parameters ----------
+        R_s       = 1.0
         gamma_f   = 0.5
-        gamma_o   = 0.2
+        gamma_o   = 1.0
         eps       = 0.01
         d_ref     = 1.5
 
         # ---------- how many constraints ----------
         n_edge_constraints = len(pairs)*2
-        n_obst_constraints = N
+        n_obst_constraints = N * len(self.obstacles)
         n_constr = n_edge_constraints + n_obst_constraints
 
         H = np.zeros((n_constr, 2*N))
@@ -160,13 +160,15 @@ class Robot:
             row += 1
 
         # ---------- obstacle constraints ----------
-        for k in range(N):
-            s_k = robots[k].caster_xy()
-            diff_o = s_k - obs_pos
-            h_obs  = diff_o @ diff_o - R_s**2
-            H[row, 2*k:2*k+2] = -2*diff_o
-            b[row, 0]         =  gamma_o * h_obs
-            row += 1
+        for obs_pos in self.obstacles:
+            print(obs_pos)
+            for k in range(N):
+                s_k = robots[k].caster_xy()
+                diff_o = s_k - obs_pos
+                h_obs  = diff_o @ diff_o - R_s**2
+                H[row, 2*k:2*k+2] = -2*diff_o
+                b[row, 0]         =  gamma_o * h_obs
+                row += 1
 
         # ---------- solve ----------
         Q_mat = cvxopt.matrix(Q, tc='d')
@@ -276,4 +278,7 @@ class Robot:
     def add_neighbours(self, robots:list, pairs:list):
         self.total_bots = robots
         self.pairs = pairs
+        
+    def add_obstacles(self, obstacles):
+        self.obstacles = obstacles
         
